@@ -8,8 +8,17 @@ interface ChatMessage {
   date_envoi: string;
 }
 
+const getDayKey = (value: string) => new Date(value).toISOString().slice(0, 10);
+
+const formatDay = (dayKey: string) => new Date(`${dayKey}T12:00:00`).toLocaleDateString(undefined, {
+  year: 'numeric',
+  month: 'long',
+  day: 'numeric',
+});
+
 const ChatHistoryPage: React.FC = () => {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [selectedDay, setSelectedDay] = useState('all');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
@@ -33,6 +42,12 @@ const ChatHistoryPage: React.FC = () => {
     loadHistory();
   }, []);
 
+  const availableDays = Array.from(new Set(messages.map((message) => getDayKey(message.date_envoi))))
+    .sort((a, b) => b.localeCompare(a));
+  const filteredMessages = selectedDay === 'all'
+    ? messages
+    : messages.filter((message) => getDayKey(message.date_envoi) === selectedDay);
+
   return (
     <div className="space-y-8">
       <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
@@ -41,15 +56,29 @@ const ChatHistoryPage: React.FC = () => {
       </div>
 
       <div className="rounded-3xl border border-slate-200 bg-slate-50 p-6 shadow-sm">
+        <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
+          <label htmlFor="history-day" className="text-sm font-semibold text-slate-900">View messages from</label>
+          <select
+            id="history-day"
+            value={selectedDay}
+            onChange={(event) => setSelectedDay(event.target.value)}
+            className="rounded-2xl border border-slate-300 bg-white px-4 py-2 text-sm text-slate-800 shadow-sm focus:border-slate-500 focus:outline-none focus:ring-2 focus:ring-slate-200"
+          >
+            <option value="all">All days</option>
+            {availableDays.map((day) => (
+              <option key={day} value={day}>{formatDay(day)}</option>
+            ))}
+          </select>
+        </div>
         {loading ? (
           <p className="text-sm text-slate-600">Loading your chat history…</p>
         ) : error ? (
           <p className="text-sm text-rose-700">{error}</p>
-        ) : messages.length === 0 ? (
+        ) : filteredMessages.length === 0 ? (
           <p className="text-sm text-slate-600">No chat history yet. Start a conversation in the assistant to save your messages.</p>
         ) : (
           <div className="space-y-4">
-            {messages.map((message) => (
+            {filteredMessages.map((message) => (
               <div key={message.id} className="rounded-3xl bg-white p-5 shadow-sm">
                 <p className="text-sm font-semibold text-slate-900">
                   {new Date(message.date_envoi).toLocaleString(undefined, {

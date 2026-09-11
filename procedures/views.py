@@ -2,6 +2,7 @@ from django.contrib.auth import get_user_model
 from django.http import JsonResponse
 from django.db.models import Q
 import os
+import unicodedata
 from pathlib import Path
 from dotenv import load_dotenv
 from rest_framework import viewsets, status
@@ -151,58 +152,131 @@ class ChatbotAPIView(APIView):
     permission_classes = [IsAuthenticated]
 
     def _generate_local_response(self, contenu_message: str) -> str:
-        normalized = (contenu_message or '').strip().lower()
+        normalized = ''.join(
+            character for character in unicodedata.normalize('NFKD', contenu_message or '')
+            if not unicodedata.combining(character)
+        ).strip().lower()
         if not normalized:
-            return "Please ask a question about procedures, document attachments, workflow status, or account access."
+            return "Posez-moi une question sur les comptes, les procédures, les documents, les validations, l'historique du chat ou une page de la plateforme."
 
-        if "create" in normalized and "account" in normalized:
-            return (
-                "Account creation is handled through the login page or by your system administrator. "
-                "If your organization supports self-registration, use the register link on the login screen."
-            )
-
-        if "login" in normalized or "sign in" in normalized or "register" in normalized:
-            return (
-                "To access the platform, use the login page and enter your assigned credentials. "
-                "If you do not have an account yet, contact your administrator to get access."
-            )
-
-        if "edit" in normalized and "procedure" in normalized:
-            return (
-                "You can edit a procedure while it is in draft status. Once a procedure is validated, it is locked and cannot be changed. "
-                "If you need to update a validated procedure, ask an administrator for the next revision process."
-            )
-
-        if "procedure" in normalized and ("post" in normalized or "submit" in normalized or "publish" in normalized):
-            return (
-                "A procedure remains editable while it is a draft. After validation, the procedure becomes final and requires a new revision for changes. "
-                "Use the procedure editor for draft updates and ensure your documents are complete before submitting."
-            )
-
-        if "document" in normalized or "attachment" in normalized:
-            return (
-                "Check the related procedure's document section to verify required attachments. "
-                "All supporting files should be uploaded and approved before the procedure can be validated."
-            )
-
-        if "status" in normalized or "statut" in normalized:
-            return (
-                "Procedures use draft, validated, and refused status values. Drafts are editable by the creator, validated procedures are locked, and refused procedures may require correction before resubmission."
-            )
-
-        if "help" in normalized or "support" in normalized or "question" in normalized:
-            return (
-                "I can help with procedure creation, editing, approval status, document requirements, and account access. "
-                "Please ask a specific question about the platform."
-            )
-
-        return (
-            "I am here to support your use of the procedure platform. "
-            "Please ask a specific question about procedures, documents, approvals, or account access so I can give you a professional response."
+        french_terms = (
+            "bonjour", "comment", "je veux", "je peux", "est-ce", "quelle", "quelles", "quel", "quels",
+            "mot de passe", "compte", "procedure", "document", "fichier", "administrateur", "historique",
+            "aide", "connexion", "inscription", "valide", "brouillon", "refuse", "telecharger", "creer",
         )
+        is_french = any(term in normalized for term in french_terms)
+
+        if is_french:
+            if any(term in normalized for term in ("mot de passe", "oublie", "oublie mon")):
+                return "Pour modifier votre mot de passe, ouvrez Paramètres, remplissez les champs du mot de passe, puis enregistrez. Si vous ne pouvez pas vous connecter, contactez un administrateur."
+            if any(term in normalized for term in ("creer un compte", "créer un compte", "inscription", "nouveau compte")):
+                return "Ouvrez la page Inscription et saisissez votre nom d'utilisateur, votre adresse e-mail et votre mot de passe. Un compte créé par inscription reçoit le rôle utilisateur par défaut."
+            if any(term in normalized for term in ("connexion", "connecter", "se connecter", "login")):
+                return "Ouvrez la page Connexion et saisissez vos identifiants. Si vous n'avez pas encore de compte, utilisez Inscription ou contactez un administrateur."
+            if any(term in normalized for term in ("creer une procedure", "créer une procédure", "ajouter une procedure", "nouvelle procedure")):
+                return "Ouvrez Procédures, choisissez Créer une procédure, puis renseignez le titre, la description et la catégorie. Enregistrez-la comme brouillon et ajoutez les documents nécessaires avant de la soumettre."
+            if any(term in normalized for term in ("modifier", "edit", "changer")) and "procedur" in normalized:
+                return "Une procédure peut être modifiée lorsqu'elle est en brouillon. Une procédure validée est normalement verrouillée ; contactez un administrateur pour demander une nouvelle révision."
+            if any(term in normalized for term in ("soumettre", "valider", "validation", "approbation", "approuver")):
+                return "Enregistrez la procédure comme brouillon, vérifiez sa description et ses documents, puis soumettez-la pour examen par un administrateur. Elle peut être validée ou refusée."
+            if any(term in normalized for term in ("document", "fichier", "piece jointe", "telecharger", "upload")):
+                return "Vous pouvez joindre des fichiers depuis la section Documents d'une procédure. Les formats acceptés sont PDF, DOC, DOCX, XLS, XLSX, CSV, TXT, ODT et ODS."
+            if any(term in normalized for term in ("statut", "brouillon", "valide", "refuse")):
+                return "Les procédures ont trois statuts : brouillon, validée et refusée. Un brouillon peut être modifié par son créateur, une procédure validée est verrouillée et une procédure refusée peut être corrigée puis soumise à nouveau."
+            if any(term in normalized for term in ("historique", "messages", "chat", "support", "conversation")):
+                return "La section Support affiche vos derniers messages du jour pour poser rapidement une question. L'Historique du chat conserve toutes les conversations et permet de filtrer les messages par jour."
+            if any(term in normalized for term in ("administrateur", "admin", "role", "droit", "permission")):
+                return "Un administrateur peut gérer les utilisateurs, les catégories, les procédures, les documents et les journaux du chat. Un nouvel utilisateur reçoit d'abord le rôle utilisateur."
+            if any(term in normalized for term in ("bonjour", "aide", "que peux-tu", "question")):
+                return "Je peux vous aider avec les comptes, les procédures, les catégories, les brouillons, la validation, les documents, les permissions, le tableau de bord, le profil, les paramètres et l'historique du chat."
+
+        if any(term in normalized for term in ("password", "mot de passe", "forgot", "oublie")):
+            return (
+                "To change your password, open Settings and use the password fields, then save your changes. "
+                "If you cannot sign in, contact an administrator to reset your access."
+            )
+
+        if any(term in normalized for term in ("account", "compte", "register", "inscription")):
+            return (
+                "Use Sign up to create a user account with a username, email, and password. "
+                "After registration, use Login to access the dashboard. New accounts have the standard user role; administrators manage elevated access."
+            )
+
+        if any(term in normalized for term in ("login", "log in", "sign in", "connexion", "connecter")):
+            return (
+                "Open Login and enter your username and password. After authentication, the platform takes you to your dashboard. "
+                "Use Sign up for a new account or contact an administrator if your credentials do not work."
+            )
+
+        if any(term in normalized for term in ("procedure", "procedur")) and any(term in normalized for term in ("create", "new", "creer", "ajouter")):
+            return (
+                "Open Procedures and choose Create procedure. Enter a title, description, and category, then save it as a draft. "
+                "You can attach supporting documents before submitting it for administrator review."
+            )
+
+        if any(term in normalized for term in ("edit", "modify", "change", "modifier")) and any(term in normalized for term in ("procedure", "procedur")):
+            return (
+                "A procedure can be edited while it is a draft. A validated procedure is locked; ask an administrator about the next revision if it needs changes. "
+                "Administrators can manage validated procedures when an authorized revision is required."
+            )
+
+        if any(term in normalized for term in ("submit", "publish", "send", "soumettre", "validate", "approval", "approve", "approbation")):
+            return (
+                "Save the procedure as a draft, check its description and documents, then submit it for administrator review. "
+                "Administrators can validate or refuse it. A validated procedure is visible to users and cannot normally be edited."
+            )
+
+        if any(term in normalized for term in ("document", "file", "attachment", "fichier", "piece jointe", "upload", "telecharger")):
+            return (
+                "Open a procedure and use its document area to upload supporting files. Accepted formats include PDF, DOC, DOCX, XLS, XLSX, CSV, TXT, ODT, and ODS. "
+                "Users can attach documents to their own drafts; administrators can manage documents according to their permissions."
+            )
+
+        if any(term in normalized for term in ("status", "statut", "draft", "brouillon", "validated", "valide", "refused", "refuse")):
+            return (
+                "Procedures have three statuses: draft, validated, and refused. Drafts can be edited by their creator, validated procedures are locked, and refused procedures can be corrected and resubmitted."
+            )
+
+        if any(term in normalized for term in ("version", "revision", "historique", "history", "date", "category", "categorie", "filter", "filtre", "search", "rechercher")):
+            return (
+                "Procedures can be browsed by category and ordered by newest or oldest creation date. "
+                "Draft edits increase the version automatically unless an administrator sets a version manually. Use the procedure details and history pages to review available information."
+            )
+
+        if any(term in normalized for term in ("chat", "message", "conversation", "support", "assistant", "historique des messages")):
+            return (
+                "Support shows your latest messages from today so you can ask a new question quickly. "
+                "Chat History keeps the complete conversation and lets you filter messages by day."
+            )
+
+        if any(term in normalized for term in ("admin", "administrator", "administrateur", "permission", "role", "droit")):
+            return (
+                "Administrators can manage users, categories, procedures, documents, and chat logs. Standard users can manage their own profile, drafts, documents allowed by the procedure rules, and personal conversations."
+            )
+
+        if any(term in normalized for term in ("dashboard", "home", "accueil")):
+            return "The dashboard is your starting page for platform activity. Use the sidebar to open procedures, support, chat history, profile, or settings."
+
+        if any(term in normalized for term in ("profile", "profil", "settings", "parametre")):
+            return "Profile contains your account information. Settings is where you can update available account preferences and password fields."
+
+        if any(term in normalized for term in ("help", "question", "what can you", "que peux-tu", "bonjour", "hello")):
+            return (
+                "I can explain account access, procedures, categories, drafts, validation, refusal, versions, documents, permissions, the dashboard, profile, settings, support, and day-filtered chat history."
+            )
+
+        return "I can answer questions about this platform's accounts, procedures, documents, approvals, permissions, dashboard, profile, settings, support, and chat history."
 
     def post(self, request, *args, **kwargs):
         contenu_message = request.data.get('contenu_message', '')
+        normalized_message = ''.join(
+            character for character in unicodedata.normalize('NFKD', contenu_message or '')
+            if not unicodedata.combining(character)
+        ).strip().lower()
+        is_french = any(term in normalized_message for term in (
+            "bonjour", "comment", "je veux", "mot de passe", "compte", "procedure", "document",
+            "administrateur", "historique", "connexion", "inscription", "aide", "brouillon",
+        ))
 
         if client is None:
             reponse_texte = self._generate_local_response(contenu_message)
@@ -214,8 +288,12 @@ class ChatbotAPIView(APIView):
                             "role": "system",
                             "content": (
                                 "You are a professional support assistant for this procedure management platform. "
-                                "Answer user questions directly, clearly, and politely. Focus on procedure creation, editing, validation, document workflows, and account access. "
-                                "If the user asks about something outside this platform, explain that you can only support platform-related topics."
+                                f"Answer user questions directly, clearly, and politely. {'Answer in French because the user wrote in French.' if is_french else 'Answer in the user\'s language when possible.'} "
+                                "The platform has Login and Sign up, a Dashboard, Procedures, Support, Chat History, Profile, Settings, and administrator pages for users, procedures, and chat logs. "
+                                "Procedures have draft, validated, and refused statuses; creators can edit drafts, validated procedures are normally locked, and administrators review submissions. "
+                                "Documents support PDF, DOC, DOCX, XLS, XLSX, CSV, TXT, ODT, and ODS files. Procedures can be filtered by category and ordered by creation date. "
+                                "Support shows only the latest same-day messages for quick access, while Chat History contains the complete conversation and supports filtering by day. "
+                                "Never invent a feature or promise an action the platform does not provide. If the user asks about something outside this platform, explain that you only support platform-related topics."
                             ),
                         },
                         {

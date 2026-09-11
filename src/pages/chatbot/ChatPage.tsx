@@ -11,6 +11,7 @@ interface ChatMessage {
 }
 
 const ChatPage: React.FC = () => {
+  const supportMessageLimit = 6;
   const { user } = useAuth();
   const [inputValue, setInputValue] = useState('');
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -22,7 +23,16 @@ const ChatPage: React.FC = () => {
     try {
       const response = await apiFetch('/api/chat/', { method: 'GET' });
       const data = await readJsonResponse<ChatMessage[]>(response);
-      setMessages(data.sort((a, b) => new Date(a.date_envoi).getTime() - new Date(b.date_envoi).getTime()));
+      const today = new Date();
+      const todayMessages = data.filter((message) => {
+        const sentAt = new Date(message.date_envoi);
+        return sentAt.getFullYear() === today.getFullYear()
+          && sentAt.getMonth() === today.getMonth()
+          && sentAt.getDate() === today.getDate();
+      });
+      setMessages(todayMessages
+        .sort((a, b) => new Date(a.date_envoi).getTime() - new Date(b.date_envoi).getTime())
+        .slice(-supportMessageLimit));
     } catch (err) {
       setError('Unable to load chat history.');
     }
@@ -63,7 +73,7 @@ const ChatPage: React.FC = () => {
           reponse_bot: data.reponse,
           date_envoi: new Date().toISOString(),
         },
-      ]);
+      ].slice(-supportMessageLimit));
       setInputValue('');
     } catch (err) {
       setError('Unable to send the message. Please try again.');
