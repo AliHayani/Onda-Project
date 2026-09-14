@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from .models import Categorie, Document, MessageChat, Procedure, Utilisateur
+from .models import Categorie, Document, MessageChat, Notification, Procedure, Utilisateur
 
 
 @admin.register(Utilisateur)
@@ -23,7 +23,7 @@ class CategorieAdmin(admin.ModelAdmin):
 class ProcedureAdmin(admin.ModelAdmin):
     list_display = ("titre", "categorie", "createur", "statut", "version", "date_modification")
     list_filter = ("statut", "categorie", "createur")
-    search_fields = ("titre", "description")
+    search_fields = ("titre", "description", "motif_refus")
     ordering = ("-date_modification",)
 
 
@@ -41,3 +41,10 @@ class MessageChatAdmin(admin.ModelAdmin):
     list_filter = ("date_envoi",)
     search_fields = ("utilisateur__username", "contenu_message", "reponse_bot")
     ordering = ("-date_envoi",)
+
+
+@admin.register(Notification)
+class NotificationAdmin(admin.ModelAdmin):
+    list_display = ("utilisateur", "titre", "lue", "date_creation")
+    list_filter = ("lue", "date_creation")
+    search_fields = ("utilisateur__username", "titre", "message")

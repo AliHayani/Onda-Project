@@ -97,6 +97,7 @@ class Procedure(models.Model):
         choices=STATUT_CHOICES,
         default=STATUT_BROUILLON,
     )
+    motif_refus = models.TextField(blank=True)
     date_creation = models.DateTimeField(auto_now_add=True)
     date_modification = models.DateTimeField(auto_now=True)
 
@@ -106,6 +107,10 @@ class Procedure(models.Model):
 
     def __str__(self) -> str:
         return f"{self.titre} (v{self.version})"
+
+    def clean(self):
+        if self.statut == self.STATUT_REFUSE and not self.motif_refus.strip():
+            raise ValidationError({"motif_refus": "A rejection reason is required."})
 
     def save(self, *args, **kwargs):
         """
@@ -158,6 +163,45 @@ class Document(models.Model):
         verbose_name_plural = "Documents"
 
 
+class Notification(models.Model):
+    utilisateur = models.ForeignKey(
+        Utilisateur,
+        on_delete=models.CASCADE,
+        related_name="notifications",
+    )
+    titre = models.CharField(max_length=200)
+    message = models.TextField()
+    lue = models.BooleanField(default=False)
+    date_creation = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-date_creation"]
+
+
+class ChatSession(models.Model):
+    """
+    Groups messages into a single conversation for the authenticated user.
+    """
+    utilisateur = models.ForeignKey(
+        Utilisateur,
+        on_delete=models.CASCADE,
+        related_name="chat_sessions",
+    )
+    session_title = models.CharField(
+        max_length=80,
+        blank=True,
+        default="New chat",
+        help_text="Titre professionnel généré par l'IA pour cette conversation.",
+    )
+    date_creation = models.DateTimeField(auto_now_add=True)
+    date_modification = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Session chat"
+        verbose_name_plural = "Sessions chat"
+        ordering = ["-date_modification"]
+
+
 class MessageChat(models.Model):
     """
     Historique des échanges d'un utilisateur (message) et du bot (réponse).
@@ -167,6 +211,13 @@ class MessageChat(models.Model):
         on_delete=models.CASCADE,
         related_name="messages_chat",
     )
+    session = models.ForeignKey(
+        ChatSession,
+        on_delete=models.CASCADE,
+        related_name="messages",
+        null=True,
+        blank=True,
+    )
     contenu_message = models.TextField()
     reponse_bot = models.TextField(blank=True)
     date_envoi = models.DateTimeField(auto_now_add=True)
@@ -174,3 +225,4 @@ class MessageChat(models.Model):
     class Meta:
         verbose_name = "Message chat"
         verbose_name_plural = "Messages chat"
+        ordering = ["date_envoi"]

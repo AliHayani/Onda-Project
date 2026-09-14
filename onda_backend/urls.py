@@ -21,7 +21,13 @@ from django.urls import include, path
 from rest_framework_simplejwt.views import TokenRefreshView
 
 from procedures.auth import CustomTokenObtainPairView
-from procedures.views import ChatbotAPIView, home
+from procedures.views import (
+    AdminChatLogsAPIView,
+    AdminChatUsersAPIView,
+    ChatSessionListAPIView,
+    ChatbotAPIView,
+    home,
+)
 
 urlpatterns = [
     path('', home, name='root-home'),
@@ -29,6 +35,10 @@ urlpatterns = [
     path('api/token/', CustomTokenObtainPairView.as_view(), name='token_obtain_pair'),
     path('api/token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
     path('api/chat/', ChatbotAPIView.as_view(), name='chatbot_api'),
+    path('api/chat/sessions/', ChatSessionListAPIView.as_view(), name='chat_session_list_api'),
+    path('api/chat/sessions/<int:session_id>/', ChatSessionListAPIView.as_view(), name='chat_session_detail_api'),
+    path('api/admin/chat-users/', AdminChatUsersAPIView.as_view(), name='admin_chat_users_api'),
+    path('api/admin/chat-logs/', AdminChatLogsAPIView.as_view(), name='admin_chat_logs_api'),
     path('api/', include('procedures.urls')),
 ]
 

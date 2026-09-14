@@ -8,12 +8,12 @@ const workspaceNavItems = [
   { label: 'Dashboard', to: '/dashboard' },
   { label: 'Procedures', to: '/procedures' },
   { label: 'Support', to: '/chat' },
-  { label: 'Chat History', to: '/chat/history' },
   { label: 'Profile', to: '/profile' },
   { label: 'Settings', to: '/settings' },
 ];
 
 const adminNavItems = [
+  { label: 'Admin Dashboard', to: '/admin/dashboard' },
   { label: 'User Management', to: '/admin/users' },
   { label: 'Procedure Management', to: '/admin/procedures' },
   { label: 'Chat Logs', to: '/admin/chat-logs' },
@@ -69,7 +69,7 @@ const Sidebar: React.FC = () => {
   }, [isAdmin]);
 
   return (
-    <aside className="hidden xl:flex xl:w-80 flex-col bg-slate-950 text-slate-100 shadow-lg">
+    <aside className="hidden h-full w-64 shrink-0 flex-col bg-slate-950 text-slate-100 shadow-lg xl:flex">
       <div className="flex h-20 items-center px-6 border-b border-slate-800">
         <div>
           <p className="text-sm uppercase tracking-[0.24em] text-slate-500">Onda</p>
@@ -77,7 +77,7 @@ const Sidebar: React.FC = () => {
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto px-4 py-6">
+      <div className="min-h-0 flex-1 overflow-y-auto px-4 py-6">
         <nav className="space-y-1">{workspaceNavItems.map(renderNavLink)}</nav>
 
         {isAdmin && (
@@ -99,10 +99,10 @@ const Sidebar: React.FC = () => {
         )}
       </div>
 
-      <div className="border-t border-slate-800 p-6">
+      <div className="mt-auto shrink-0 border-t border-slate-800 p-5">
         <div className="mb-4 text-sm text-slate-500">Signed in as</div>
         <div className="mb-1 text-base font-semibold text-white">{user?.username || 'Unknown user'}</div>
-        <div className="mb-6 text-sm text-slate-500">{isAdmin ? 'Administrator' : 'Standard user'}</div>
+        <div className="mb-4 text-sm text-slate-500">{isAdmin ? 'Administrator' : 'Standard user'}</div>
         <button
           type="button"
           onClick={handleLogout}

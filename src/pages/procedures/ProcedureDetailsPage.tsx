@@ -7,6 +7,7 @@ import {
   canEditProcedure,
   canRejectProcedure,
   canViewProcedure,
+  getCategoryLabel,
   getProcedureStatusLabel,
   PROCEDURE_STATUS,
   ProcedureRecord,
@@ -43,6 +44,8 @@ const ProcedureDetailsPage: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [actionLoading, setActionLoading] = useState<string | null>(null);
+  const [showRejectionForm, setShowRejectionForm] = useState(false);
+  const [rejectionReason, setRejectionReason] = useState('');
   const [documents, setDocuments] = useState<DocumentRecord[]>([]);
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
 
@@ -82,7 +85,7 @@ const ProcedureDetailsPage: React.FC = () => {
     fetchProcedure();
   }, [id, user]);
 
-  const updateStatus = async (status: string, actionName: string) => {
+  const updateStatus = async (status: string, actionName: string, reason = '') => {
     if (!procedure) {
       return;
     }
@@ -93,10 +96,12 @@ const ProcedureDetailsPage: React.FC = () => {
     try {
       const response = await apiFetch(`/api/procedures/${procedure.id}/`, {
         method: 'PATCH',
-        body: JSON.stringify({ statut: status }),
+        body: JSON.stringify({ statut: status, ...(reason ? { motif_refus: reason } : {}) }),
       });
       const updatedProcedure = await readJsonResponse<ProcedureRecord>(response);
       setProcedure(updatedProcedure);
+      setShowRejectionForm(false);
+      setRejectionReason('');
     } catch {
       setError(`Unable to ${actionName.toLowerCase()} this procedure.`);
     } finally {
@@ -224,7 +229,7 @@ const ProcedureDetailsPage: React.FC = () => {
             {canRejectProcedure(user, procedure) && (
               <button
                 type="button"
-                onClick={() => updateStatus(PROCEDURE_STATUS.REJECTED, 'Reject')}
+                onClick={() => setShowRejectionForm(true)}
                 disabled={actionLoading !== null}
                 className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-2 text-sm font-semibold text-rose-700 transition hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-60"
               >
@@ -245,7 +250,7 @@ const ProcedureDetailsPage: React.FC = () => {
             >
               History
             </Link>
-            {canDeleteProcedure(user) && (
+            {canDeleteProcedure(user, procedure) && (
               <button
                 type="button"
                 onClick={deleteProcedure}
@@ -262,6 +267,39 @@ const ProcedureDetailsPage: React.FC = () => {
       {error && (
         <div className="rounded-3xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">
           {error}
+        </div>
+      )}
+
+      {showRejectionForm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 p-6">
+          <div className="w-full max-w-lg rounded-3xl bg-white p-6 shadow-2xl">
+            <h2 className="text-xl font-semibold text-slate-900">Reject procedure</h2>
+            <p className="mt-2 text-sm text-slate-600">Explain why this procedure is being rejected.</p>
+            <textarea
+              value={rejectionReason}
+              onChange={(event) => setRejectionReason(event.target.value)}
+              rows={5}
+              placeholder="Write the rejection reason..."
+              className="mt-4 block w-full rounded-2xl border border-slate-300 px-4 py-3 text-slate-900 focus:border-slate-500 focus:outline-none focus:ring-2 focus:ring-slate-200"
+            />
+            <div className="mt-5 flex justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => setShowRejectionForm(false)}
+                className="rounded-2xl border border-slate-200 bg-slate-100 px-4 py-2 text-sm font-semibold text-slate-800"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => updateStatus(PROCEDURE_STATUS.REJECTED, 'Reject', rejectionReason.trim())}
+                disabled={!rejectionReason.trim() || actionLoading !== null}
+                className="rounded-2xl bg-rose-600 px-4 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                Reject procedure
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
@@ -292,7 +330,7 @@ const ProcedureDetailsPage: React.FC = () => {
           </div>
           <div className="rounded-2xl bg-slate-50 p-4">
             <p className="text-sm font-medium text-slate-700">Category</p>
-            <p className="mt-2 text-sm text-slate-600">{procedure.categorie_nom || 'Not assigned'}</p>
+            <p className="mt-2 text-sm text-slate-600">{getCategoryLabel(procedure.categorie_nom) || 'Not assigned'}</p>
           </div>
           <div className="rounded-2xl bg-slate-50 p-4">
             <p className="text-sm font-medium text-slate-700">Workflow</p>

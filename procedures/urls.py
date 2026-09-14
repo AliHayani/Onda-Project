@@ -4,6 +4,7 @@ from rest_framework.routers import DefaultRouter
 from .views import (
     CategorieViewSet,
     DocumentViewSet,
+    NotificationViewSet,
     MessageChatViewSet,
     ProcedureViewSet,
     UtilisateurViewSet,
@@ -16,6 +17,7 @@ router.register(r"utilisateurs", UtilisateurViewSet, basename="utilisateur")
 router.register(r"categories", CategorieViewSet, basename="categorie")
 router.register(r"procedures", ProcedureViewSet, basename="procedure")
 router.register(r"documents", DocumentViewSet, basename="document")
+router.register(r"notifications", NotificationViewSet, basename="notification")
 router.register(r"messages-chat", MessageChatViewSet, basename="messagechat")
 
 

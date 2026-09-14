@@ -1,7 +1,7 @@
 from django.contrib.auth import get_user_model
 from rest_framework import serializers
 
-from .models import Categorie, Document, MessageChat, Procedure
+from .models import Categorie, ChatSession, Document, MessageChat, Notification, Procedure
 from .permissions import can_edit_procedure
 
 
@@ -107,6 +107,14 @@ class ProcedureSerializer(serializers.ModelSerializer):
             return value
         return round(max(float(value), 1.0), 1)
 
+    def validate(self, attrs):
+        next_status = attrs.get("statut")
+        current_reason = getattr(self.instance, "motif_refus", "") if self.instance else ""
+        next_reason = attrs.get("motif_refus", current_reason)
+        if next_status == Procedure.STATUT_REFUSE and not str(next_reason or "").strip():
+            raise serializers.ValidationError({"motif_refus": "A rejection reason is required."})
+        return attrs
+
     def create(self, validated_data):
         request = self.context.get("request") if self.context else None
         user = getattr(request, "user", None)
@@ -172,7 +180,56 @@ class DocumentSerializer(serializers.ModelSerializer):
         read_only_fields = ("date_ajout", "fichier_url", "nom_fichier")
 
 
+class ChatSessionSerializer(serializers.ModelSerializer):
+    message_count = serializers.SerializerMethodField()
+    latest_message = serializers.SerializerMethodField()
+    latest_message_date = serializers.SerializerMethodField()
+
+    def get_message_count(self, obj):
+        return obj.messages.count()
+
+    def get_latest_message(self, obj):
+        message = obj.messages.order_by("-date_envoi").first()
+        return message.contenu_message if message else ""
+
+    def get_latest_message_date(self, obj):
+        message = obj.messages.order_by("-date_envoi").first()
+        return message.date_envoi if message else obj.date_modification
+
+    class Meta:
+        model = ChatSession
+        fields = (
+            "id",
+            "session_title",
+            "date_creation",
+            "date_modification",
+            "latest_message",
+            "latest_message_date",
+            "message_count",
+        )
+
+
 class MessageChatSerializer(serializers.ModelSerializer):
+    session_title = serializers.SerializerMethodField()
+
+    def get_session_title(self, obj):
+        return getattr(obj.session, "session_title", "New chat")
+
     class Meta:
         model = MessageChat
         fields = "__all__"
+
+
+class AdminChatUserSerializer(serializers.Serializer):
+    id = serializers.IntegerField()
+    username = serializers.CharField()
+    email = serializers.EmailField(allow_blank=True)
+    total_messages = serializers.IntegerField()
+    last_message_at = serializers.DateTimeField()
+
+
+class NotificationSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Notification
+        fields = "__all__"
+        read_only_fields = ("utilisateur", "date_creation")

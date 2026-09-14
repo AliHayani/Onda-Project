@@ -4,6 +4,7 @@ import useAuth from '../../features/auth/useAuth';
 import {
   canCreateProcedure,
   canEditProcedure,
+  getCategoryLabel,
   getProcedureStatusLabel,
   isAdminUser,
   PROCEDURE_STATUS,
@@ -139,7 +140,7 @@ const ProcedureEditPage: React.FC = () => {
     }
 
     if (!form.categorie) {
-      setError('Veuillez sélectionner une catégorie.');
+      setError('Please select a category.');
       return;
     }
 
@@ -246,13 +247,13 @@ const ProcedureEditPage: React.FC = () => {
               <option value="">Select category</option>
               {categories.map((category) => (
                 <option key={category.id} value={category.id}>
-                  {category.nom}
+                  {getCategoryLabel(category.nom)}
                 </option>
               ))}
             </select>
             {categories.length === 0 && (
               <p className="mt-2 text-sm text-rose-600">
-                Aucune catégorie n’est disponible.
+                No categories are available.
               </p>
             )}
           </div>

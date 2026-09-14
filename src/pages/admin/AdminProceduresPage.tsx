@@ -3,7 +3,9 @@ import { Link } from 'react-router-dom';
 import useAuth from '../../features/auth/useAuth';
 import {
   canApproveProcedure,
+  canDeleteProcedure,
   canRejectProcedure,
+  getCategoryLabel,
   getProcedureStatusLabel,
   PROCEDURE_STATUS,
   ProcedureRecord,
@@ -24,6 +26,8 @@ const AdminProceduresPage: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [actionId, setActionId] = useState<number | null>(null);
+  const [rejectionCandidate, setRejectionCandidate] = useState<ProcedureRecord | null>(null);
+  const [rejectionReason, setRejectionReason] = useState('');
 
   const categoryOptions = useMemo(
     () => [{ id: 0, nom: 'All categories' }, ...categories],
@@ -113,6 +117,34 @@ const AdminProceduresPage: React.FC = () => {
     }
   };
 
+  const rejectProcedure = async () => {
+    if (!rejectionCandidate || !rejectionReason.trim()) {
+      return;
+    }
+
+    setActionId(rejectionCandidate.id);
+    setError('');
+    try {
+      const response = await apiFetch(`/api/procedures/${rejectionCandidate.id}/`, {
+        method: 'PATCH',
+        body: JSON.stringify({
+          statut: PROCEDURE_STATUS.REJECTED,
+          motif_refus: rejectionReason.trim(),
+        }),
+      });
+      const updatedProcedure = await readJsonResponse<ProcedureRecord>(response);
+      setProcedures((currentProcedures) =>
+        currentProcedures.map((item) => (item.id === updatedProcedure.id ? updatedProcedure : item))
+      );
+      setRejectionCandidate(null);
+      setRejectionReason('');
+    } catch {
+      setError('Unable to reject this procedure.');
+    } finally {
+      setActionId(null);
+    }
+  };
+
   const deleteProcedure = async (procedure: ProcedureRecord) => {
     setActionId(procedure.id);
     setError('');
@@ -165,7 +197,7 @@ const AdminProceduresPage: React.FC = () => {
             >
               {categoryOptions.map((category) => (
                 <option key={category.id} value={category.id ? String(category.id) : ''}>
-                  {category.nom}
+                  {getCategoryLabel(category.nom)}
                 </option>
               ))}
             </select>
@@ -210,8 +242,8 @@ const AdminProceduresPage: React.FC = () => {
                     {getProcedureStatusLabel(procedure)}
                     {procedure.version ? ` v${procedure.version}` : ''}
                   </p>
-                  <p className="text-sm text-slate-500">Catégorie: {procedure.categorie_nom || 'Non définie'}</p>
-                  <p className="text-sm text-slate-500">Créé le: {procedure.date_creation || 'N/A'}</p>
+                  <p className="text-sm text-slate-500">Category: {getCategoryLabel(procedure.categorie_nom) || 'Not assigned'}</p>
+                  <p className="text-sm text-slate-500">Created: {procedure.date_creation || 'N/A'}</p>
                 </div>
 
                 <div className="flex flex-wrap gap-2">
@@ -228,7 +260,10 @@ const AdminProceduresPage: React.FC = () => {
                   {canRejectProcedure(user, procedure) && (
                     <button
                       type="button"
-                      onClick={() => updateStatus(procedure, PROCEDURE_STATUS.REJECTED)}
+                      onClick={() => {
+                        setRejectionCandidate(procedure);
+                        setRejectionReason('');
+                      }}
                       disabled={actionId !== null}
                       className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-2 text-sm font-semibold text-rose-700 transition hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-60"
                     >
@@ -247,20 +282,55 @@ const AdminProceduresPage: React.FC = () => {
                   >
                     Edit
                   </Link>
-                  <button
-                    type="button"
-                    onClick={() => deleteProcedure(procedure)}
-                    disabled={actionId !== null}
-                    className="rounded-2xl border border-rose-200 bg-white px-4 py-2 text-sm font-semibold text-rose-700 transition hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-60"
-                  >
-                    Delete
-                  </button>
+                  {canDeleteProcedure(user, procedure) && (
+                    <button
+                      type="button"
+                      onClick={() => deleteProcedure(procedure)}
+                      disabled={actionId !== null}
+                      className="rounded-2xl border border-rose-200 bg-white px-4 py-2 text-sm font-semibold text-rose-700 transition hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      Delete
+                    </button>
+                  )}
                 </div>
               </div>
             ))}
           </div>
         )}
       </div>
+
+      {rejectionCandidate && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 p-6">
+          <div className="w-full max-w-lg rounded-3xl bg-white p-6 shadow-2xl">
+            <h2 className="text-xl font-semibold text-slate-900">Reject procedure</h2>
+            <p className="mt-2 text-sm text-slate-600">Explain why “{rejectionCandidate.titre}” is being rejected.</p>
+            <textarea
+              value={rejectionReason}
+              onChange={(event) => setRejectionReason(event.target.value)}
+              rows={5}
+              placeholder="Write the rejection reason..."
+              className="mt-4 block w-full rounded-2xl border border-slate-300 px-4 py-3 text-slate-900 focus:border-slate-500 focus:outline-none focus:ring-2 focus:ring-slate-200"
+            />
+            <div className="mt-5 flex justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => setRejectionCandidate(null)}
+                className="rounded-2xl border border-slate-200 bg-slate-100 px-4 py-2 text-sm font-semibold text-slate-800"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={rejectProcedure}
+                disabled={!rejectionReason.trim() || actionId !== null}
+                className="rounded-2xl bg-rose-600 px-4 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                Reject procedure
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

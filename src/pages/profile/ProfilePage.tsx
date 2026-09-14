@@ -4,6 +4,8 @@ import { apiFetch, readJsonResponse } from '../../lib/api';
 
 const ProfilePage: React.FC = () => {
   const { user } = useAuth();
+  const displayName = [user?.firstName, user?.lastName].filter(Boolean).join(' ') || user?.username || 'User';
+  const displayRole = user?.role === 'admin' || user?.isStaff ? 'Administrator' : 'Standard user';
   const [showResetForm, setShowResetForm] = useState(false);
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -66,15 +68,15 @@ const ProfilePage: React.FC = () => {
           <div className="mt-4 space-y-4 text-sm text-slate-600">
             <div>
               <p className="font-medium text-slate-800">Name</p>
-              <p className="mt-1">Tina Brooks</p>
+              <p className="mt-1">{displayName}</p>
             </div>
             <div>
               <p className="font-medium text-slate-800">Email</p>
-              <p className="mt-1">tina.brooks@example.com</p>
+              <p className="mt-1">{user?.email || 'No email available'}</p>
             </div>
             <div>
               <p className="font-medium text-slate-800">Role</p>
-              <p className="mt-1">Standard user</p>
+              <p className="mt-1">{displayRole}</p>
             </div>
           </div>
         </div>

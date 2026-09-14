@@ -1,7 +1,8 @@
 from django.contrib.auth import get_user_model
 from django.http import JsonResponse
-from django.db.models import Q
+from django.db.models import Count, Max, Q
 import os
+import re
 import unicodedata
 from pathlib import Path
 from dotenv import load_dotenv
@@ -16,12 +17,15 @@ try:
 except Exception:  # pragma: no cover - fallback for environments without the vendored package
     Groq = None
 
-from .models import Categorie, Document, MessageChat, Procedure
+from .models import Categorie, ChatSession, Document, MessageChat, Notification, Procedure
 from .permissions import DocumentPermission, ProcedurePermission, is_admin_user
 from .serializers import (
     CategorieSerializer,
+    AdminChatUserSerializer,
+    ChatSessionSerializer,
     DocumentSerializer,
     MessageChatSerializer,
+    NotificationSerializer,
     ProcedureSerializer,
     UtilisateurSerializer,
 )
@@ -115,6 +119,20 @@ class ProcedureViewSet(viewsets.ModelViewSet):
     def perform_create(self, serializer):
         serializer.save(createur=self.request.user)
 
+    def perform_update(self, serializer):
+        previous_status = serializer.instance.statut
+        procedure = serializer.save()
+        if (
+            procedure.statut == Procedure.STATUT_REFUSE
+            and previous_status != Procedure.STATUT_REFUSE
+            and procedure.createur_id
+        ):
+            Notification.objects.create(
+                utilisateur_id=procedure.createur_id,
+                titre="Procedure rejected",
+                message=f"Your procedure '{procedure.titre}' was rejected. Reason: {procedure.motif_refus}",
+            )
+
 
 class DocumentViewSet(viewsets.ModelViewSet):
     queryset = Document.objects.all()
@@ -137,6 +155,15 @@ class DocumentViewSet(viewsets.ModelViewSet):
         )
 
 
+class NotificationViewSet(viewsets.ModelViewSet):
+    serializer_class = NotificationSerializer
+    permission_classes = [IsAuthenticated]
+    http_method_names = ["get", "patch", "head", "options"]
+
+    def get_queryset(self):
+        return Notification.objects.filter(utilisateur=self.request.user, lue=False)
+
+
 class MessageChatViewSet(viewsets.ModelViewSet):
     queryset = MessageChat.objects.all()
     serializer_class = MessageChatSerializer
@@ -148,8 +175,80 @@ class MessageChatViewSet(viewsets.ModelViewSet):
         return self.queryset.filter(utilisateur=self.request.user)
 
 
+class AdminChatUsersAPIView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, *args, **kwargs):
+        if not is_admin_user(request.user):
+            return Response(status=status.HTTP_403_FORBIDDEN)
+
+        users = Utilisateur.objects.filter(
+            messages_chat__isnull=False,
+        ).annotate(
+            total_messages=Count("messages_chat", distinct=True),
+            last_message_at=Max("messages_chat__date_envoi"),
+        ).order_by("-last_message_at", "username")
+        return Response(AdminChatUserSerializer(users, many=True).data)
+
+
+class AdminChatLogsAPIView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, *args, **kwargs):
+        if not is_admin_user(request.user):
+            return Response(status=status.HTTP_403_FORBIDDEN)
+
+        user_id = request.query_params.get("user_id")
+        if not user_id:
+            return Response({"detail": "user_id is required."}, status=status.HTTP_400_BAD_REQUEST)
+
+        messages = MessageChat.objects.filter(
+            utilisateur_id=user_id,
+        ).select_related("session", "utilisateur").order_by("date_envoi", "id")
+        return Response(MessageChatSerializer(messages, many=True).data)
+
+
 class ChatbotAPIView(APIView):
     permission_classes = [IsAuthenticated]
+
+    def _generate_session_title(self, contenu_message: str) -> str:
+        cleaned_message = re.sub(r"\s+", " ", (contenu_message or "").strip())
+        if not cleaned_message:
+            return "New chat"
+
+        normalized = cleaned_message.lower()
+        if "procedur" in normalized:
+            if any(term in normalized for term in ("create", "add", "ajouter", "post", "submit", "new")):
+                return "Procedure Creation Guide"
+            if any(term in normalized for term in ("see", "view", "find", "browse", "other")):
+                return "Procedure Discovery"
+        if any(term in normalized for term in ("password", "mot de passe", "forgot", "reset", "reset my")):
+            return "Password Reset Help"
+
+        if client is not None:
+            try:
+                completion = client.chat.completions.create(
+                    messages=[
+                        {
+                            "role": "system",
+                            "content": "Summarize the user's request into a professional conversation title of 3 or 4 words. Capture the intent, do not copy the opening words. For example, 'how to add a procedure' becomes 'Procedure Creation Guide'. Return ONLY the title string, with no quotes or extra text.",
+                        },
+                        {"role": "user", "content": cleaned_message},
+                    ],
+                    model="llama-3.1-8b-instant",
+                )
+                title = completion.choices[0].message.content.strip().strip('"\'')
+                if title:
+                    words = title.split()
+                    title = " ".join(words[:4])
+                    return title[:80]
+            except Exception:
+                pass
+
+        generated = "Conversation Assistance"
+        if not generated:
+            return "New chat"
+        return generated[:80]
 
     def _generate_local_response(self, contenu_message: str) -> str:
         normalized = ''.join(
@@ -175,6 +274,8 @@ class ChatbotAPIView(APIView):
                 return "Ouvrez la page Connexion et saisissez vos identifiants. Si vous n'avez pas encore de compte, utilisez Inscription ou contactez un administrateur."
             if any(term in normalized for term in ("creer une procedure", "créer une procédure", "ajouter une procedure", "nouvelle procedure")):
                 return "Ouvrez Procédures, choisissez Créer une procédure, puis renseignez le titre, la description et la catégorie. Enregistrez-la comme brouillon et ajoutez les documents nécessaires avant de la soumettre."
+            if any(term in normalized for term in ("voir", "trouver", "consulter", "autres", "collegues", "collègues")) and "procedur" in normalized:
+                return "Ouvrez l'onglet Procédures dans la barre latérale gauche pour consulter toutes les procédures disponibles. Vous pouvez ensuite filtrer par catégorie ou trier par date."
             if any(term in normalized for term in ("modifier", "edit", "changer")) and "procedur" in normalized:
                 return "Une procédure peut être modifiée lorsqu'elle est en brouillon. Une procédure validée est normalement verrouillée ; contactez un administrateur pour demander une nouvelle révision."
             if any(term in normalized for term in ("soumettre", "valider", "validation", "approbation", "approuver")):
@@ -208,10 +309,16 @@ class ChatbotAPIView(APIView):
                 "Use Sign up for a new account or contact an administrator if your credentials do not work."
             )
 
-        if any(term in normalized for term in ("procedure", "procedur")) and any(term in normalized for term in ("create", "new", "creer", "ajouter")):
+        if any(term in normalized for term in ("procedure", "procedur")) and any(term in normalized for term in ("create", "new", "add", "ajouter", "post", "submit", "creer")):
             return (
                 "Open Procedures and choose Create procedure. Enter a title, description, and category, then save it as a draft. "
                 "You can attach supporting documents before submitting it for administrator review."
+            )
+
+        if any(term in normalized for term in ("see", "view", "find", "browse", "other", "colleague", "colleagues")) and any(term in normalized for term in ("procedure", "procedur")):
+            return (
+                "Open the Procedures tab in the left sidebar to view the available procedures. "
+                "You can then filter them by category or sort them by creation date."
             )
 
         if any(term in normalized for term in ("edit", "modify", "change", "modifier")) and any(term in normalized for term in ("procedure", "procedur")):
@@ -269,6 +376,7 @@ class ChatbotAPIView(APIView):
 
     def post(self, request, *args, **kwargs):
         contenu_message = request.data.get('contenu_message', '')
+        session_id = request.data.get('session_id')
         normalized_message = ''.join(
             character for character in unicodedata.normalize('NFKD', contenu_message or '')
             if not unicodedata.combining(character)
@@ -278,7 +386,33 @@ class ChatbotAPIView(APIView):
             "administrateur", "historique", "connexion", "inscription", "aide", "brouillon",
         ))
 
-        if client is None:
+        session = None
+        if session_id:
+            try:
+                session = ChatSession.objects.get(id=session_id, utilisateur=request.user)
+            except ChatSession.DoesNotExist:
+                session = None
+
+        is_first_message = session is None
+        if session is None:
+            session = ChatSession.objects.create(
+                utilisateur=request.user,
+                session_title="New chat",
+            )
+
+        if is_first_message and contenu_message.strip():
+            generated_title = self._generate_session_title(contenu_message)
+            session.session_title = generated_title
+            session.save(update_fields=["session_title"])
+
+        procedure_request = (
+            any(term in normalized_message for term in ("procedure", "procedur"))
+            and any(term in normalized_message for term in (
+                "create", "new", "add", "ajouter", "post", "submit", "see", "view", "find", "browse",
+            ))
+        )
+
+        if client is None or procedure_request:
             reponse_texte = self._generate_local_response(contenu_message)
         else:
             try:
@@ -287,13 +421,17 @@ class ChatbotAPIView(APIView):
                         {
                             "role": "system",
                             "content": (
-                                "You are a professional support assistant for this procedure management platform. "
-                                f"Answer user questions directly, clearly, and politely. {'Answer in French because the user wrote in French.' if is_french else 'Answer in the user\'s language when possible.'} "
-                                "The platform has Login and Sign up, a Dashboard, Procedures, Support, Chat History, Profile, Settings, and administrator pages for users, procedures, and chat logs. "
+                                "You are a friendly, practical support assistant for the ONDA procedure management platform. "
+                                f"Answer directly, clearly, and conversationally. {'Answer in French because the user wrote in French.' if is_french else 'Answer in the user\'s language when possible.'} "
+                                "Give actionable guidance using the actual interface instead of merely listing your capabilities. "
+                                "If a user asks to see or find procedures, tell them to click the 'Procedures' tab in the left sidebar; "
+                                "for documents, direct them to open a procedure and use its document section; for support, direct them to the 'Support' tab; "
+                                "for past conversations, direct them to the Previous sessions list in Support; for account details, direct them to Profile or Settings. "
+                                "The platform has Login and Sign up, a Dashboard, Procedures, Support, Profile, Settings, and administrator pages for users, procedures, and chat logs. "
                                 "Procedures have draft, validated, and refused statuses; creators can edit drafts, validated procedures are normally locked, and administrators review submissions. "
                                 "Documents support PDF, DOC, DOCX, XLS, XLSX, CSV, TXT, ODT, and ODS files. Procedures can be filtered by category and ordered by creation date. "
-                                "Support shows only the latest same-day messages for quick access, while Chat History contains the complete conversation and supports filtering by day. "
-                                "Never invent a feature or promise an action the platform does not provide. If the user asks about something outside this platform, explain that you only support platform-related topics."
+                                "Support contains the conversation and previous sessions in its left sidebar. If a request is ambiguous, ask a brief clarifying question; "
+                                "if it is outside ONDA, politely explain that you support ONDA workflows only."
                             ),
                         },
                         {
@@ -309,12 +447,46 @@ class ChatbotAPIView(APIView):
 
         MessageChat.objects.create(
             utilisateur=request.user,
+            session=session,
             contenu_message=contenu_message,
             reponse_bot=reponse_texte,
         )
-        return Response({"reponse": reponse_texte})
+        session.save(update_fields=["date_modification"])
+        return Response({
+            "reponse": reponse_texte,
+            "session_id": session.id,
+            "session_title": session.session_title,
+            "date_creation": session.date_creation,
+            "date_modification": session.date_modification,
+        })
 
     def get(self, request, *args, **kwargs):
-        messages = MessageChat.objects.filter(utilisateur=request.user)
+        messages = MessageChat.objects.filter(utilisateur=request.user).select_related('session')
+        session_id = request.query_params.get('session_id')
+        if session_id:
+            messages = messages.filter(session_id=session_id)
         serializer = MessageChatSerializer(messages, many=True)
         return Response(serializer.data)
+
+
+class ChatSessionListAPIView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, *args, **kwargs):
+        sessions = ChatSession.objects.filter(
+            utilisateur=request.user,
+            messages__isnull=False,
+        ).distinct().order_by("-date_modification", "-id")
+        serializer = ChatSessionSerializer(sessions, many=True)
+        return Response(serializer.data)
+
+    def delete(self, request, session_id, *args, **kwargs):
+        session = ChatSession.objects.filter(
+            id=session_id,
+            utilisateur=request.user,
+        ).first()
+        if session is None:
+            return Response(status=status.HTTP_404_NOT_FOUND)
+
+        session.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)

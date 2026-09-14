@@ -26,6 +26,9 @@ class ProcedurePermission(BasePermission):
         return True
 
     def has_object_permission(self, request, view, obj):
+        if view.action == "destroy":
+            return is_admin_user(request.user) and obj.statut == Procedure.STATUT_VALIDE
+
         if is_admin_user(request.user):
             return True
 

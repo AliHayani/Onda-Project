@@ -22,6 +22,27 @@ export interface ProcedureRecord {
   version?: number;
 }
 
+const CATEGORY_TRANSLATIONS: Record<string, string> = {
+  'Infrastructure et réseaux': 'Infrastructure and Networks',
+  "Systèmes d’exploitation aéroportuaire": 'Airport Operations Systems',
+  'Applications passagers': 'Passenger Applications',
+  'Sécurité et cybersécurité': 'Security and Cybersecurity',
+  'Données et analytique': 'Data and Analytics',
+  'Support IT / helpdesk': 'IT Support / Helpdesk',
+  'Conformité et gouvernance': 'Compliance and Governance',
+  'Projets et gestion du changement': 'Projects and Change Management',
+  'Télécoms et communications': 'Telecommunications and Communications',
+  'Maintenance et supervision': 'Maintenance and Monitoring',
+};
+
+export const getCategoryLabel = (name?: string) => {
+  if (!name) {
+    return '';
+  }
+
+  return CATEGORY_TRANSLATIONS[name] || name;
+};
+
 export const isAdminUser = (user: AuthUser | null | undefined) => {
   return user?.role === 'admin' || user?.isStaff === true;
 };
@@ -82,8 +103,8 @@ export const canEditProcedure = (user: AuthUser | null | undefined, procedure: P
   return isAdminUser(user) || (isProcedureOwner(user, procedure) && isDraftProcedure(procedure));
 };
 
-export const canDeleteProcedure = (user: AuthUser | null | undefined) => {
-  return isAdminUser(user);
+export const canDeleteProcedure = (user: AuthUser | null | undefined, procedure: ProcedureRecord) => {
+  return isAdminUser(user) && isPublishedProcedure(procedure);
 };
 
 export const canApproveProcedure = (user: AuthUser | null | undefined, procedure: ProcedureRecord) => {
@@ -107,5 +128,18 @@ export const getProcedureStatusLabel = (procedure: Pick<ProcedureRecord, 'statut
     return 'Rejected';
   }
 
-  return procedure.statut || 'Unknown';
+  const normalizedStatus = normalizeStatus(procedure.statut);
+  if (normalizedStatus === 'validé' || normalizedStatus === 'valide' || normalizedStatus === 'accepté') {
+    return 'Published';
+  }
+
+  if (normalizedStatus === 'brouillon') {
+    return 'Draft';
+  }
+
+  if (normalizedStatus === 'refusé' || normalizedStatus === 'refuse') {
+    return 'Rejected';
+  }
+
+  return 'Unknown';
 };

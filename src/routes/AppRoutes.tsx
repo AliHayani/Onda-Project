@@ -13,17 +13,29 @@ import ProcedureDetailsPage from '../pages/procedures/ProcedureDetailsPage';
 import ProcedureEditPage from '../pages/procedures/ProcedureEditPage';
 import ProcedureHistoryPage from '../pages/procedures/ProcedureHistoryPage';
 import ChatPage from '../pages/chatbot/ChatPage';
-import ChatHistoryPage from '../pages/chatbot/ChatHistoryPage';
 import ProfilePage from '../pages/profile/ProfilePage';
 import SettingsPage from '../pages/profile/SettingsPage';
 import AdminUsersPage from '../pages/admin/AdminUsersPage';
 import AdminProceduresPage from '../pages/admin/AdminProceduresPage';
 import AdminChatLogsPage from '../pages/admin/AdminChatLogsPage';
+import AdminDashboardPage from '../pages/admin/AdminDashboardPage';
 import NotFoundPage from '../pages/errors/NotFoundPage';
 import UnauthorizedPage from '../pages/errors/UnauthorizedPage';
 
 import PrivateRoute from './PrivateRoute';
 import AdminRoute from './AdminRoute';
+import useAuth from '../features/auth/useAuth';
+import { isAdminUser } from '../features/procedures/rbac';
+
+const DashboardEntry: React.FC = () => {
+  const { user } = useAuth();
+
+  if (isAdminUser(user)) {
+    return <Navigate to="/admin/dashboard" replace />;
+  }
+
+  return <DashboardPage />;
+};
 
 const AppRoutes: React.FC = () => (
   <Router>
@@ -37,7 +49,7 @@ const AppRoutes: React.FC = () => (
         element={
           <PrivateRoute>
             <AppLayout>
-              <DashboardPage />
+              <DashboardEntry />
             </AppLayout>
           </PrivateRoute>
         }
@@ -105,17 +117,6 @@ const AppRoutes: React.FC = () => (
         }
       />
       <Route
-        path="/chat/history"
-        element={
-          <PrivateRoute>
-            <AppLayout>
-              <ChatHistoryPage />
-            </AppLayout>
-          </PrivateRoute>
-        }
-      />
-
-      <Route
         path="/profile"
         element={
           <PrivateRoute>
@@ -136,6 +137,16 @@ const AppRoutes: React.FC = () => (
         }
       />
 
+      <Route
+        path="/admin/dashboard"
+        element={
+          <AdminRoute>
+            <AdminLayout>
+              <AdminDashboardPage />
+            </AdminLayout>
+          </AdminRoute>
+        }
+      />
       <Route
         path="/admin/users"
         element={

@@ -4,6 +4,7 @@ import useAuth from '../../features/auth/useAuth';
 import {
   canEditProcedure,
   canViewProcedure,
+  getCategoryLabel,
   getProcedureStatusLabel,
   ProcedureRecord,
 } from '../../features/procedures/rbac';
@@ -119,7 +120,7 @@ const ProcedureListPage: React.FC = () => {
             >
               {categoryOptions.map((category) => (
                 <option key={category.id} value={category.id ? String(category.id) : ''}>
-                  {category.nom}
+                  {getCategoryLabel(category.nom)}
                 </option>
               ))}
             </select>
@@ -155,7 +156,7 @@ const ProcedureListPage: React.FC = () => {
                     {getProcedureStatusLabel(procedure)}
                     {procedure.version ? ` v${procedure.version}` : ''}
                   </p>
-                  <p className="text-sm text-slate-500">Category: {procedure.categorie_nom || 'Unknown'}</p>
+                  <p className="text-sm text-slate-500">Category: {getCategoryLabel(procedure.categorie_nom) || 'Unknown'}</p>
                   <p className="text-sm text-slate-500">Created: {procedure.date_creation || 'N/A'}</p>
                 </div>
                 <div className="flex gap-2">
